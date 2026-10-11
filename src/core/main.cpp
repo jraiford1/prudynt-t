@@ -567,6 +567,11 @@ int main(int argc, const char *argv[]) {
     }
 
     if (global_restart_video || startup) {
+      // Startup geometry was resolved in IMPSystem::init(); on a restart,
+      // re-apply image.zoom in case it changed.
+      if (!startup)
+        apply_zoom_geometry();
+
       if (cfg->stream0.enabled) {
         start_video(0);
       }

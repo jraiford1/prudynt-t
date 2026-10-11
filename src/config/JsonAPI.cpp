@@ -329,6 +329,23 @@ void handle_image(JsonValue *obj, std::string &out, bool &sep) {
       "hflip", "image.hflip", [] { hal::isp::set_hflip(true); },
       [] { hal::isp::set_hflip(false); });
 
+  // Digital zoom.  The window is fixed when the video channels are created,
+  // so a change requests the in-place video (and RTSP) restart, which
+  // re-applies it; repeated changes coalesce into that restart.
+  {
+    const int zoom = cfg->image.zoom;
+    const int cx = cfg->image.zoom_center_x;
+    const int cy = cfg->image.zoom_center_y;
+    add_int("zoom", "image.zoom", [] {});
+    add_int("zoom_center_x", "image.zoom_center_x", [] {});
+    add_int("zoom_center_y", "image.zoom_center_y", [] {});
+    if (cfg->image.zoom != zoom || cfg->image.zoom_center_x != cx ||
+        cfg->image.zoom_center_y != cy) {
+      global_restart_video = true;
+      global_restart_rtsp = true;
+    }
+  }
+
   add_int("anti_flicker", "image.anti_flicker",
           [] { hal::isp::set_anti_flicker(cfg->image.anti_flicker); });
 

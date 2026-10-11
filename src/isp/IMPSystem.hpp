@@ -72,4 +72,8 @@ private:
   bool init_failed = false;
 };
 
+// Re-applies image.zoom to the stream geometry; called before the video
+// channels are recreated on an in-place video restart.
+void apply_zoom_geometry();
+
 #endif

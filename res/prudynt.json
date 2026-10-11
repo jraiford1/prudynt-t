@@ -53,7 +53,10 @@
     "sharpness": 128,
     "vflip": false,
     "wb_bgain": 0,
-    "wb_rgain": 0
+    "wb_rgain": 0,
+    "zoom": 100,
+    "zoom_center_x": 50,
+    "zoom_center_y": 50
   },
   "motion": {
     "cooldown_time": 5,

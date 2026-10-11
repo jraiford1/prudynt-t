@@ -75,20 +75,36 @@ int IMPFramesource::init() {
   }
   chnAttr.type = FS_PHY_CHANNEL;
 
-  chnAttr.crop.enable = 0;
-  chnAttr.crop.top = 0;
-  chnAttr.crop.left = 0;
-  chnAttr.crop.width = sensor->width;
-  chnAttr.crop.height = sensor->height;
-
-  if ((sensor->width != stream->width) || (sensor->height != stream->height)) {
-    scale = 1;
+  if (stream->fs_crop_enable) {
+    // Digital zoom: scale the sensor to fs_scale (if needed), then crop the
+    // stream-sized window at fs_crop.  See apply_zoom() in IMPSystem.cpp.
+    scale = (stream->fs_scale_w != sensor->width ||
+             stream->fs_scale_h != sensor->height);
+    chnAttr.scaler.enable = scale;
+    chnAttr.scaler.outwidth = scale ? stream->fs_scale_w : sensor->width;
+    chnAttr.scaler.outheight = scale ? stream->fs_scale_h : sensor->height;
+    chnAttr.crop.enable = 1;
+    chnAttr.crop.left = stream->fs_crop_x;
+    chnAttr.crop.top = stream->fs_crop_y;
+    chnAttr.crop.width = stream->width;
+    chnAttr.crop.height = stream->height;
   } else {
-    scale = 0;
+    chnAttr.crop.enable = 0;
+    chnAttr.crop.top = 0;
+    chnAttr.crop.left = 0;
+    chnAttr.crop.width = sensor->width;
+    chnAttr.crop.height = sensor->height;
+
+    if ((sensor->width != stream->width) ||
+        (sensor->height != stream->height)) {
+      scale = 1;
+    } else {
+      scale = 0;
+    }
+    chnAttr.scaler.enable = scale;
+    chnAttr.scaler.outwidth = stream->width;
+    chnAttr.scaler.outheight = stream->height;
   }
-  chnAttr.scaler.enable = scale;
-  chnAttr.scaler.outwidth = stream->width;
-  chnAttr.scaler.outheight = stream->height;
   chnAttr.picWidth = stream->width;
   chnAttr.picHeight = stream->height;
 

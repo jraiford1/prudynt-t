@@ -191,6 +191,14 @@ bool validateInt120(const int &v) {
   return (v >= 0 && v <= 120) || v == IMP_AUTO_VALUE;
 }
 
+bool validateZoom(const int &v) {
+  return v >= 100 && v <= 800;
+}
+
+bool validatePercent(const int &v) {
+  return v >= 0 && v <= 100;
+}
+
 bool validateInt255(const int &v) {
   return v >= 0 && v <= 255;
 }
@@ -533,6 +541,9 @@ std::vector<ConfigItem<int>> CFG::getIntItems() {
       {"image.backlight_compensation", image.backlight_compensation, 0,
        [](const int &v) { return v >= 0 && v <= 10; }},
       {"image.brightness", image.brightness, 128, validateInt255},
+      {"image.zoom", image.zoom, 100, validateZoom},
+      {"image.zoom_center_x", image.zoom_center_x, 50, validatePercent},
+      {"image.zoom_center_y", image.zoom_center_y, 50, validatePercent},
       {"image.contrast", image.contrast, 128, validateInt255},
       {"image.core_wb_mode", image.core_wb_mode, 0,
        [](const int &v) { return v >= 0 && v <= 9; }},

@@ -178,6 +178,9 @@ struct _image {
   int core_wb_mode;
   int wb_rgain;
   int wb_bgain;
+  int zoom;          // digital zoom, percent of the sensor; 100 = off
+  int zoom_center_x; // zoom window centre, percent of sensor width
+  int zoom_center_y; // zoom window centre, percent of sensor height
 };
 struct _motion {
   int monitor_stream;
@@ -306,6 +309,19 @@ struct _stream {
   _stream_stats stats;
   bool audio_enabled;
   bool video_enabled;
+  // Framesource scale + crop derived from image.zoom by
+  // resolve_all_stream_geometry(); never stored in prudynt.json.
+  bool fs_crop_enable{false};
+  int fs_crop_x{0};
+  int fs_crop_y{0};
+  int fs_scale_w{0};
+  int fs_scale_h{0};
+  // Size requested before zoom, and the size zoom last produced; see
+  // zoom_stream() in IMPSystem.cpp.
+  int zoom_req_w{0};
+  int zoom_req_h{0};
+  int zoom_out_w{0};
+  int zoom_out_h{0};
 };
 struct _sysinfo {
   const char *cpu = nullptr;

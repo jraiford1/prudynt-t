@@ -227,6 +227,99 @@ void apply_substream_defaults(_stream &sub, const _stream &source) {
   }
 }
 
+// Digital zoom (image.zoom, percent).  The framesource scales first and crops
+// second, and its scaler only shrinks, so pixels are never upscaled: a stream
+// at least as large as the visible sensor region becomes a 1:1 crop of the
+// sensor (and is shrunk to that region), while a smaller stream downscales the
+// sensor so the region matches its width, then crops it.  Sizes stay on
+// 16-pixel boundaries so the encoder needs no padding crop.  The window is
+// fixed when a video channel is created, so a zoom change is applied by the
+// in-place video restart (see apply_zoom_geometry()).
+static int align_down(int v, int a) { return (v / a) * a; }
+
+static void apply_zoom(const char *stream_name, _stream &stream) {
+  stream.fs_crop_enable = false;
+  const int zoom = cfg->image.zoom;
+  const int sw = cfg->sensor.width;
+  const int sh = cfg->sensor.height;
+  if (zoom <= 100 || sw <= 0 || sh <= 0 || stream.width <= 0 ||
+      stream.height <= 0)
+    return;
+
+  const int vw = align_down(sw * 100 / zoom, 16);
+  const int vh = align_down(sh * 100 / zoom, 16);
+  if (vw < 16 || vh < 16)
+    return;
+  int vx = sw * cfg->image.zoom_center_x / 100 - vw / 2;
+  int vy = sh * cfg->image.zoom_center_y / 100 - vh / 2;
+  vx = std::max(0, std::min(vx, sw - vw)) & ~1;
+  vy = std::max(0, std::min(vy, sh - vh)) & ~1;
+
+  if (stream.width >= vw) {
+    stream.width = vw;
+    stream.height = vh;
+    stream.fs_scale_w = sw;
+    stream.fs_scale_h = sh;
+    stream.fs_crop_x = vx;
+    stream.fs_crop_y = vy;
+  } else {
+    const double s = static_cast<double>(stream.width) / vw;
+    stream.height = std::max(16, align_down(static_cast<int>(vh * s), 16));
+    stream.fs_scale_w = static_cast<int>(sw * s) & ~1;
+    stream.fs_scale_h = static_cast<int>(sh * s) & ~1;
+    stream.fs_crop_x = std::min(static_cast<int>(vx * s) & ~1,
+                                stream.fs_scale_w - stream.width);
+    stream.fs_crop_y = std::min(static_cast<int>(vy * s) & ~1,
+                                stream.fs_scale_h - stream.height);
+  }
+  stream.fs_crop_enable = true;
+  LOG_INFO(stream_name << ": zoom " << zoom << "% -> " << stream.width << "x"
+                       << stream.height << " from sensor " << stream.fs_scale_w
+                       << "x" << stream.fs_scale_h << " at +" << stream.fs_crop_x
+                       << "+" << stream.fs_crop_y);
+}
+
+// Applies zoom to a stream from its requested (pre-zoom) size, so it can be
+// re-applied on every video restart.  If the stream size no longer matches
+// what zoom last produced, it was changed since (for example from the web UI)
+// and becomes the new request.
+static void zoom_stream(const char *stream_name, _stream &stream) {
+  if (stream.width != stream.zoom_out_w || stream.height != stream.zoom_out_h) {
+    stream.zoom_req_w = stream.width;
+    stream.zoom_req_h = stream.height;
+  }
+  stream.width = stream.zoom_req_w;
+  stream.height = stream.zoom_req_h;
+  apply_zoom(stream_name, stream);
+  stream.zoom_out_w = stream.width;
+  stream.zoom_out_h = stream.height;
+}
+
+// JPEG streams that follow their source channel keep following it when zoom
+// changes the source size.
+static void follow_source(_stream &jpeg, const _stream &source, int old_w,
+                          int old_h) {
+  if (jpeg.width == old_w && jpeg.height == old_h) {
+    jpeg.width = source.width;
+    jpeg.height = source.height;
+  }
+}
+
+void reapply_zoom_geometry() {
+  if (!cfg)
+    return;
+  const int w0 = cfg->stream0.width, h0 = cfg->stream0.height;
+  const int w1 = cfg->stream1.width, h1 = cfg->stream1.height;
+  zoom_stream("stream0", cfg->stream0);
+  zoom_stream("stream1", cfg->stream1);
+  const _stream *src[2] = {&cfg->stream0, &cfg->stream1};
+  const int old_w[2] = {w0, w1}, old_h[2] = {h0, h1};
+  for (_stream *jpeg : {&cfg->stream2, &cfg->stream3}) {
+    const int ch = jpeg->jpeg_channel == 0 ? 0 : 1;
+    follow_source(*jpeg, *src[ch], old_w[ch], old_h[ch]);
+  }
+}
+
 // Single source of truth for stream dimensions: each stream falls back
 // to its per-stream default when unset, clamped to the sensor. Runs after
 // the sensor geometry is known (IMPSystem::init), before the encoders are
@@ -239,11 +332,13 @@ void resolve_all_stream_geometry() {
   // H.264 source streams default to the sensor geometry when unset; an
   // explicit value in prudynt.json wins, clamped to the sensor.
   resolve_stream_geometry("stream0", cfg->stream0, 0, 0);
+  zoom_stream("stream0", cfg->stream0);
 
   // Substream: 768 wide by default, height from the source aspect ratio and
   // rounded to a macroblock boundary so the encoder needs no frame crop.
   apply_substream_defaults(cfg->stream1, cfg->stream0);
   resolve_stream_geometry("stream1", cfg->stream1, 0, 0);
+  zoom_stream("stream1", cfg->stream1);
 
   // JPEG streams encode an existing source channel, so when unset they
   // follow that source's resolved size instead of the sensor.
@@ -376,6 +471,9 @@ void cleanup_stale_t23_isp_state(IMPSensorInfo &sensor_info) {
 #endif
 
 } // namespace
+
+// Public entry point; the implementation lives in the anonymous namespace.
+void apply_zoom_geometry() { reapply_zoom_geometry(); }
 
 IMPSensorInfo IMPSystem::create_sensor_info(const char *sensor_name) {
   IMPSensorInfo out;
